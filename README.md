@@ -1,68 +1,74 @@
 # GenAI Agents Evaluation Framework
 
-> A general-purpose framework for measuring whether any LLM-powered agent is getting better — and proving it with numbers, not vibes.
+> A step-by-step framework to test and score any LLM-powered agent — so you can measure exactly how well it performs before and after every change.
 
 ![Agent Evaluation Framework](resources/evaluation-framework.svg)
 
 ---
 
-## Why "It Works on My Prompt" Isn't Enough
+## Why You Need a Structured Evaluation
 
-GenAI outputs are **probabilistic and open-ended** — traditional software has `expected == actual`, but LLM outputs rarely match character-for-character yet can still be semantically correct (or subtly wrong). A prompt that wows in a demo can silently break after a model upgrade, and nobody notices until a customer complains. Before you touch a model version, a system prompt, or a retrieval config, you need a repeatable way to ask: *did this change make my agent better, worse, or about the same?*
+Every GenAI agent takes a user instruction and produces an output. But there is no built-in mechanism to measure how accurate that output is. Unlike traditional software where you can check `expected == actual`, LLM outputs vary every time — and there is no automatic way to tell if the output is correct, partially correct, or wrong.
 
-The framework in this post is **agent-agnostic**. It applies equally to a RAG assistant, a summarizer, a classifier, a code-generation agent, or a multi-step tool-using agent. To make it concrete, I'll thread a running example — a sentiment-scoring agent over movie reviews — but treat that as a *vehicle for the framework*, not the subject. The three steps, schema shapes, and metrics stay the same whatever your agent does.
+On top of that, new LLM models are released frequently. Each model behaves differently, and there is no guarantee that a model that works well for one use case will work well for another. Blindly switching models — or changing a prompt, or updating a retrieval config — can silently degrade your agent's performance with no way to detect it.
+
+You need a structured evaluation framework that can measure overall agent performance, and show you exactly what changed — before and after every update.
+
+This framework works for **any type of agent** — RAG assistants, summarizers, classifiers, code generators, or multi-step tool-using agents. To explain how it works, I'll use a running example: a **movie-review sentiment analyzer**. This agent takes a movie review as input and produces two outputs — a sentiment label (`positive` or `negative`) and a positivity score (0–100).  The evaluation framework measures how accurately the agent produces these outputs across 100 such reviews.
 
 ---
 
 ## The Three-Step Framework
 
-Whatever your agent does, evaluation reduces to three steps:
+No matter what your agent does, evaluation comes down to three steps:
 
-1. **Build a Ground Truth Dataset** — a small, human-verified set of inputs paired with ideal outputs, in whatever shape your agent produces.
-2. **Build (or wrap) the Agent** — the system under test, exposed via a stable endpoint so evaluation hits the same surface production does.
-3. **Evaluate with LLM-as-a-Judge** — score each agent response against the ground truth and track a single baseline number you can defend, alongside deterministic metrics.
+1. **Build a Ground Truth Dataset** — a small set of inputs with human-verified correct outputs, matching the exact format your agent produces.
+2. **Build (or Wrap) the Agent** — the agent you want to test, running behind an API endpoint so the evaluation tests it the same way real users would use it.
+3. **Evaluate with LLM-as-a-Judge** — use a separate LLM to score each agent response against the ground truth, and compute a single baseline score you can track over time.
 
-Every agent has inputs and outputs. The framework doesn't care what they *mean*; it cares that you can 
-- (a) fix a set of reference inputs, 
-- (b) hand the same inputs to the agent, and 
-- (c) compare the two outputs in a way that produces a number. Everything below is a pattern for doing that well.
+Every agent takes inputs and produces outputs. This framework needs three things:
+- (a) A fixed set of test inputs with known correct answers,
+- (b) The agent's actual outputs for those same inputs, and
+- (c) A scoring method that compares the two and produces a number.
+
+Everything below explains how to do each of these well.
 
 ---
 
 ## Step 1 — Build the Ground Truth Dataset
 
-A ground truth row has three parts: the **input** to the agent, the **expected output** a human would accept as correct, and optional **metadata** (difficulty, category, source) for slicing results later.
+Each row in the ground truth dataset has three parts: the **input** (what you send to the agent), the **expected output** (the correct answer, verified by a human), and optional **metadata** (like difficulty level or category) for analyzing results later.
 
 ```python
 {
-    "input":    <whatever your agent consumes>,
-    "expected": <ideal output in the agent's output shape>,
+    "input":    <what the agent receives>,
+    "expected": <the correct output, in the same format the agent produces>,
     "meta":     {...},
 }
 ```
 
-For our running example, the agent is a **movie-review sentiment analyzer**. It receives a movie review as plain text and produces two outputs: a **sentiment label** (`positive` or `negative`) and a **positivity score** (an integer from 0 to 100, where 0 means the review is entirely negative and 100 means it is overwhelmingly positive). Think of the sentiment as the classification and the score as the confidence/intensity.
+For our running example, the agent is a **movie-review sentiment analyzer**. It receives a movie review as plain text and produces two outputs: a **sentiment label** (`positive` or `negative`) and a **positivity score** (an integer from 0 to 100, where 0 means the review is entirely negative and 100 means it is overwhelmingly positive). Think of the sentiment as the classification and the score as the intensity.
 
-Because the agent produces structured output, our ground truth dataset must mirror that shape exactly — same fields, same value ranges — so we can compare them side by side during evaluation.
+Because the agent produces structured output, the ground truth dataset must use the exact same format — same fields, same value ranges — so we can compare them directly during evaluation.
 
 ### Example schema (sentiment agent)
 
 ```python
 {
-    "gt_title":      str,         # movie title (metadata for identification)
+    "gt_title":      str,         # movie title (for identification)
     "review":        str,         # the review text — this is the input to the agent
     "gt_sentiment":  "positive" | "negative",  # human-verified sentiment label
-    "gt_score":      int,         # 0–100 positivity score, human-assigned
+    "gt_score":      int,         # 0–100 positivity score, assigned by a human
 }
 ```
 
-Here `gt_` (ground truth) prefixed fields are the human-verified ideal outputs. During evaluation, these will be compared against the agent's predictions (`agent_sentiment`, `agent_score`) to measure accuracy.
+The `gt_` prefix stands for "ground truth." These are the human-verified correct answers. During evaluation, they will be compared against the agent's predictions (`agent_sentiment`, `agent_score`) to measure how accurate the agent is.
 
-### Source
+### Where does the data come from?
 
-The general rule: **start from real data, then have a human verify it.** Scraping alone gives you a dataset; human verification gives you *ground truth*.
+The general rule: **start with real data, then have a human verify it.** Raw data alone gives you a dataset. Human verification makes it *ground truth*.
 
-For our sentiment example, we curated 100 Bollywood movie reviews manually — 50 positive, 50 negative — spanning classics (Sholay, Andaz Apna Apna) to recent releases (Kill, 12th Fail). Each row was human-verified: the sentiment label was confirmed and the 0–100 positivity score was assigned by reading the review, not inferred from a star rating.
+For our sentiment example, we curated 100 Bollywood movie reviews — 50 positive, 50 negative — covering classics (Sholay, Andaz Apna Apna) and recent releases (Kill, 12th Fail). Each row was verified by a human: the sentiment label was confirmed and the 0–100 positivity score was assigned by reading the actual review, not copied from a star rating.
 
 ```
 gt_title,review,gt_sentiment,gt_score
@@ -72,44 +78,44 @@ Race 3,"Absolute disaster. The dialogue is laughably bad...",negative,8
 
 The full dataset is in [`ground_truth_dataset.csv`](evaluation/ground_truth_dataset.csv) — 100 rows, balanced sentiment, score range 4–98.
 
-Where your ground truth comes from depends on the agent:
+Where your ground truth comes from depends on the type of agent:
 
 | Agent type | Typical source |
 |---|---|
-| **Classification / sentiment** | Public datasets (IMDB, SST) + human scoring pass |
+| **Classification / sentiment** | Public datasets (IMDB, SST) + human review pass |
 | **RAG** | Real user questions + expert-written reference answers |
 | **Summarization** | Documents + human-written summaries |
 | **Code generation** | Task specs + verified reference implementations |
-| **Tool-using agent** | Real task logs + human-validated trajectories |
+| **Tool-using agent** | Real task logs + human-verified action sequences |
 
-Whatever the source, the human-in-the-loop pass is what separates a ground truth dataset from raw data.
+Whatever the source, the human verification step is what makes it ground truth instead of just data.
 
 ---
 
 ## Step 2 — Build (or Wrap) the Agent
 
-The agent is whatever your team already ships or is planning to ship. The only constraints the framework imposes:
+The agent is whatever system your team has built or is building. The framework only requires three things:
 
-- **Deterministic interface.** Same input → same output shape, every time.
-- **Served like production.** Wrap it in the same endpoint  you'll deploy — evaluation should exercise the serving layer, not bypass it.
-- **Structured output.** If your agent returns free text, add a parsing layer so the judge and the deterministic metrics have something to compare.
+- **Consistent output format.** The same type of input always produces the same type of output — same fields, same structure.
+- **Run it like production.** Wrap it in the same API endpoint you would use in production. The evaluation should test the full system, not a shortcut version of it.
+- **Structured output.** If your agent returns free text, add a parsing step so the outputs can be compared against the ground truth numerically.
 
-For the running example: review in, sentiment + score out, via **LangChain** with **Groq** (Llama 3.1 70B through the OpenAI-compatible SDK) — chosen for fast, cheap iteration. Swap in any provider; the framework doesn't care.
+For the running example: the agent receives a review and returns a sentiment label + score. It uses **LangChain** with **Groq** (Llama 3.1 70B) — chosen because it is fast and inexpensive for iteration. You can swap in any LLM provider; the framework works the same way.
 
 The full agent implementation — including the LangChain setup, system prompt with scoring guidelines, session management, and the FastAPI server — is documented in [`agent/agent-README.md`](agent/agent-README.md).
 
 ### The consistency problem: batching + thread_id
 
-If you send 100 reviews as 100 independent API calls, the LLM treats each one in isolation. Review #1 and review #47 might use different internal calibration — a "pretty good" review could score 72 in one call and 65 in another. The outputs drift even at `temperature=0` because each call lacks relative context.
+If you send 100 reviews as 100 separate API calls, the LLM treats each one independently. Review #1 and review #47 might get scored using different internal standards — a "pretty good" review could score 72 in one call and 65 in another. Even with `temperature=0`, the scores drift because each call has no context about how previous reviews were scored.
 
-Two mechanisms fix this:
+Two techniques solve this:
 
-**Batching** — instead of one review per request, send 10 at a time. Within a single batch, the LLM sees all 10 reviews together and scores them relative to each other. A glowing review next to a lukewarm one forces clearer separation.
+**Batching** — send 10 reviews per request instead of one. Within a single batch, the LLM sees all 10 reviews together and scores them relative to each other. A glowing review next to a harsh one forces the model to separate their scores clearly.
 
-**Thread ID (conversation history)** — across batches, pass a `thread_id` that carries conversation history. When batch 2 arrives, the LLM sees batch 1's reviews *and its own scores* in the chat history. This gives it calibration context: "I scored a similar review 78 last batch, so this one should land around 75."
+**Thread ID (conversation history)** — across batches, pass a `thread_id` that carries the conversation history forward. When batch 2 arrives, the LLM can see batch 1's reviews *and the scores it gave them*. This gives the model a reference point: "I scored a similar review 78 in the last batch, so this one should be around 75."
 
 ```python
-thread_id = str(uuid.uuid4())        # one ID for the entire eval run
+thread_id = str(uuid.uuid4())        # one ID for the entire evaluation run
 for i in range(0, 100, BATCH_SIZE):   # 10 batches of 10
     batch = ground_truth[i : i + BATCH_SIZE]
     results = requests.post(ENDPOINT, json={
@@ -118,21 +124,21 @@ for i in range(0, 100, BATCH_SIZE):   # 10 batches of 10
     })
 ```
 
-The LLM now applies a consistent scoring rubric across all 100 reviews because every batch is informed by the decisions that came before it.
+The LLM now scores all 100 reviews using a consistent standard because every batch builds on the scores from previous batches.
 
-For a deep dive into how `thread_id` works — including the session history implementation, what changes with vs. without it, and practical notes on batch sizing — see [`agent/agent-README.md` → Why thread_id matters](agent/agent-README.md#why-thread_id-matters).
+For a detailed explanation of how `thread_id` works — including the session history implementation, what changes with vs. without it, and practical notes on batch sizing — see [`agent/agent-README.md` → Why thread_id matters](agent/agent-README.md#why-thread_id-matters).
 
 ---
 
 ## Step 3 — Evaluate with LLM-as-a-Judge
 
-For each ground-truth row, call the agent endpoint and ask a **judge LLM** to score how close the agent's response is to the ideal. The judge is a separate LLM whose only job is to compare two outputs and produce a structured verdict. This pattern works for any agent — summaries, answers, plans, explanations, diffs.
+For each row in the ground truth dataset, send the input to the agent, then ask a **judge LLM** to score how close the agent's output is to the correct answer. The judge is a separate LLM whose only job is to compare two outputs and produce a structured score. This approach works for any type of agent output — summaries, answers, plans, code, or classifications.
 
 ### How it works
 
 The evaluation script ([`evaluation/evaluate.py`](evaluation/evaluate.py)) runs in three phases:
 
-**Phase 1 — Collect agent responses.** The script reads the ground truth CSV and sends reviews to the agent endpoint in batches of 10 with a shared `thread_id`. After this phase, every row has both the ground truth and the agent's prediction side by side:
+**Phase 1 — Collect agent responses.** The script reads the ground truth CSV and sends reviews to the agent in batches of 10, using a shared `thread_id`. After this phase, every row has both the correct answer and the agent's prediction side by side:
 
 | # | Review | gt_sentiment | gt_score | agent_sentiment | agent_score |
 |---|---|---|---|---|---|
@@ -142,25 +148,25 @@ The evaluation script ([`evaluation/evaluate.py`](evaluation/evaluate.py)) runs 
 | 4 | "Ajay Devgn is superb as a father protecting his family..." | positive | 90 | positive | 91 |
 | 5 | "The most disliked trailer on YouTube for a reason..." | negative | 6 | positive | 30 |
 
-**Phase 2 — Judge each row.** A judge LLM (a *different* model from the agent to avoid self-preference bias) evaluates every row independently. It receives the review, the ground truth, and the agent's response, then returns:
+**Phase 2 — Judge each row.** A judge LLM (a *different model* from the agent, to avoid the model favoring its own style of output) evaluates every row independently. It receives the review, the correct answer, and the agent's response, then returns:
 
 | Field | Type | Description |
 |---|---|---|
-| `review` | string | The original review text, passed through for traceability |
-| `eval_score` | int (0–100) | How close the agent got to the ideal |
-| `eval_reason` | string | One-line justification citing the numeric gap and sentiment match |
+| `review` | string | The original review text (included for traceability) |
+| `eval_score` | int (0–100) | How close the agent's output is to the correct answer |
+| `eval_reason` | string | A one-line explanation of why it scored this way |
 
-The judge follows explicit scoring rules: sentiment mismatch caps `eval_score` at 40 (getting the direction wrong is the most expensive mistake), and score proximity determines the rest (±5 = near-perfect, ±15 = good, ±30+ = weak).
+The judge follows explicit scoring rules: if the agent got the sentiment wrong (e.g., said "positive" when the correct answer is "negative"), the `eval_score` is capped at 40 — because getting the direction wrong is the biggest possible mistake. The rest of the score depends on how close the numeric score is to the correct one (within ±5 = near-perfect, within ±15 = good, beyond ±30 = poor).
 
 | # | Review | gt | agent | Sentiment match? | Score gap | eval_score | eval_reason |
 |---|---|---|---|---|---|---|---|
 | 1 | "A masterpiece that blends cricket..." | positive, 95 | positive, 88 | Yes | 7 | 85 | Sentiment matched. Score gap of 7 — within good range. |
 | 2 | "Absolute disaster..." | negative, 8 | negative, 12 | Yes | 4 | 92 | Sentiment matched. Score gap of 4 — near-perfect. |
-| 3 | "Misunderstood on release..." | positive, 86 | positive, 74 | Yes | 12 | 72 | Sentiment matched. Score gap of 12 — acceptable but notable drift. |
-| 4 | "Ajay Devgn is superb..." | positive, 90 | positive, 91 | Yes | 1 | 97 | Sentiment matched. Score gap of 1 — near-perfect alignment. |
+| 3 | "Misunderstood on release..." | positive, 86 | positive, 74 | Yes | 12 | 72 | Sentiment matched. Score gap of 12 — acceptable but noticeable drift. |
+| 4 | "Ajay Devgn is superb..." | positive, 90 | positive, 91 | Yes | 1 | 97 | Sentiment matched. Score gap of 1 — near-perfect. |
 | 5 | "The most disliked trailer..." | negative, 6 | positive, 30 | **No** | 24 | **12** | Sentiment mismatch (capped at 40). Score gap of 24. Combined: 12. |
 
-**Phase 3 — Compute the baseline.** The average of all 100 `eval_score` values becomes the baseline — the single number every future change is measured against. Two deterministic metrics are computed alongside it:
+**Phase 3 — Compute the baseline.** The average of all 100 `eval_score` values becomes the **baseline** — the single number that represents how well your agent performs right now. Two additional metrics are computed alongside it:
 
 ```
 baseline_score       = avg(eval_score across all 100 rows)
@@ -168,45 +174,44 @@ sentiment_accuracy   = % of rows where agent_sentiment == gt_sentiment
 score_mae            = avg(|gt_score - agent_score|) across all rows
 ```
 
-For the full evaluation walkthrough — including the judge prompt, scoring rules breakdown, why we take the average, and how the three metrics complement each other — see [`evaluation/eval-README.md`](evaluation/eval-README.md).
+For the full evaluation walkthrough — including the judge prompt, scoring rules, and how the three metrics work together — see [`evaluation/eval-README.md`](evaluation/eval-README.md).
 
 ---
 
 ## Applying the Framework to Other Agents
 
-The sentiment example was a vehicle. The pattern carries across agent types with almost no change:
+The sentiment example was just for illustration. The same pattern works for any type of agent:
 
-| Agent | Ground-truth row | Deterministic metric | Judge rubric |
+| Agent | Ground-truth row | Measurable metric | What the judge evaluates |
 |---|---|---|---|
-| **RAG assistant** | question → reference answer + citations | citation precision/recall | factual grounding, completeness |
+| **RAG assistant** | question → reference answer + citations | citation precision/recall | factual accuracy, completeness |
 | **Summarizer** | document → human summary + key points | ROUGE / BERTScore | coverage, conciseness, faithfulness |
-| **Classifier** | input → label | accuracy, F1 | reasoning quality on errors |
-| **Code agent** | task → reference diff + tests | tests pass, lint, type-check | readability, scope discipline |
-| **Tool-using agent** | task → expected tool trajectory + final output | trajectory match | result quality, efficiency |
-| **Chat / assistant** | user turn → reference response | — | helpfulness, safety, tone |
+| **Classifier** | input → label | accuracy, F1 | quality of reasoning on wrong answers |
+| **Code agent** | task → reference code + tests | tests pass, lint, type-check | readability, scope |
+| **Tool-using agent** | task → expected actions + final output | action sequence match | result quality, efficiency |
+| **Chat / assistant** | user message → reference response | — | helpfulness, safety, tone |
 
-> The three steps — ground truth, agent-under-test, judge — don't change. Only the shape of the rows and the rubric do.
+> The three steps — ground truth, agent under test, judge — stay the same for every agent. Only the data format and the scoring rules change.
 
 ---
 
 ## Project Structure
 
 ```
-blog/
-├── agent-evaluation-framework.md   ← this post
-├── ground_truth_dataset.csv        ← 100 human-verified Bollywood reviews
+genai-evaluation-framework/
+├── README.md                       ← this document
 ├── requirements.txt
 ├── .env.example
 ├── agent/
-│   ├── agent-README.md             ← agent deep dive: thread_id, batching, API
+│   ├── agent-README.md             ← detailed agent documentation
 │   ├── agent.py                    ← core agent: LangChain + Groq, session history
 │   └── server.py                   ← FastAPI endpoint
 └── evaluation/
-    ├── eval-README.md              ← evaluation deep dive: judge, scoring, baseline
+    ├── eval-README.md              ← detailed evaluation documentation
     ├── evaluate.py                 ← evaluation script: batch → judge → metrics
+    ├── ground_truth_dataset.csv    ← 100 human-verified Bollywood reviews
     └── results/                    ← JSON output per run
 ```
 
-- **[`agent/agent-README.md`](agent/agent-README.md)** — how the agent works, why `thread_id` matters for consistent LLM responses, the session history implementation, and the API reference.
-- **[`evaluation/eval-README.md`](evaluation/eval-README.md)** — how the LLM-as-a-Judge evaluation works end to end: the three phases, scoring rules, how the baseline is computed from the average of `eval_score`, and how the three metrics complement each other.
-
+- **[`agent/agent-README.md`](agent/agent-README.md)** — how the agent works, why `thread_id` matters for consistent scoring, the session history implementation, and the API reference.
+- **[`evaluation/eval-README.md`](evaluation/eval-README.md)** — how the LLM-as-a-Judge evaluation works end to end: the three phases, scoring rules, how the baseline is computed, and how the three metrics work together.

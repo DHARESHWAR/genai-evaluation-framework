@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 740" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#0f172a"/>
@@ -31,10 +31,10 @@
     </filter>
   </defs>
 
-  <rect width="1200" height="720" fill="url(#bg)"/>
+  <rect width="1200" height="740" fill="url(#bg)"/>
 
   <!-- Title -->
-  <text x="600" y="58" text-anchor="middle" fill="#f1f5f9" font-size="30" font-weight="700">Agent Evaluation Framework</text>
+  <text x="600" y="58" text-anchor="middle" fill="#f1f5f9" font-size="30" font-weight="700">GenAI Agents Evaluation Framework</text>
   <text x="600" y="88" text-anchor="middle" fill="#94a3b8" font-size="16">Ground Truth · Agent Under Test · LLM-as-a-Judge</text>
 
   <!-- Ground Truth Card -->
@@ -54,7 +54,7 @@
       <text x="220" y="315" fill="#fbbf24">pos | neg</text>
       <text x="220" y="340" fill="#fbbf24">0–100</text>
     </g>
-    <text x="90" y="380" fill="#64748b" font-size="12" font-style="italic">stratified · versioned · held-out slice</text>
+    <text x="90" y="380" fill="#64748b" font-size="12" font-style="italic">balanced · 50 positive · 50 negative</text>
   </g>
 
   <!-- Agent Card -->
@@ -63,14 +63,15 @@
     <rect x="450" y="150" width="300" height="52" rx="18" fill="url(#gAgent)"/>
     <rect x="450" y="180" width="300" height="22" fill="url(#gAgent)"/>
     <text x="470" y="184" fill="#0f172a" font-size="17" font-weight="700">2 · Agent Under Test</text>
-    <text x="470" y="232" fill="#cbd5e1" font-size="13">LangChain + Groq (Llama-3.1 70B)</text>
+    <text x="470" y="232" fill="#cbd5e1" font-size="13">LangChain + Groq (Llama 3.1 70B)</text>
     <g font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#e2e8f0">
-      <text x="470" y="268">POST /analyze</text>
-      <text x="470" y="295" fill="#94a3b8">in  → review</text>
-      <text x="470" y="320" fill="#94a3b8">out → agent_sentiment</text>
-      <text x="470" y="345" fill="#94a3b8">       agent_score</text>
+      <text x="470" y="262">POST /analyze</text>
+      <text x="470" y="287" fill="#94a3b8">in  → reviews[] + thread_id</text>
+      <text x="470" y="312" fill="#94a3b8">out → agent_sentiment</text>
+      <text x="470" y="337" fill="#94a3b8">       agent_score</text>
     </g>
-    <text x="470" y="380" fill="#64748b" font-size="12" font-style="italic">structured output · temperature 0</text>
+    <text x="470" y="365" fill="#64748b" font-size="12" font-style="italic">structured output · temperature 0</text>
+    <text x="470" y="385" fill="#64748b" font-size="12" font-style="italic">batched (10/req) · thread_id calibration</text>
   </g>
 
   <!-- Judge Card -->
@@ -79,19 +80,20 @@
     <rect x="830" y="150" width="300" height="52" rx="18" fill="url(#gJudge)"/>
     <rect x="830" y="180" width="300" height="22" fill="url(#gJudge)"/>
     <text x="850" y="184" fill="#0f172a" font-size="17" font-weight="700">3 · LLM-as-a-Judge</text>
-    <text x="850" y="232" fill="#cbd5e1" font-size="13">Different model family from agent</text>
+    <text x="850" y="232" fill="#cbd5e1" font-size="13">Different model (avoids self-preference)</text>
     <g font-family="ui-monospace, Menlo, monospace" font-size="13" fill="#e2e8f0">
       <text x="850" y="268">compare(agent, truth)</text>
       <text x="850" y="295" fill="#a78bfa">→ eval_score  0–100</text>
       <text x="850" y="320" fill="#a78bfa">→ eval_reason</text>
     </g>
-    <text x="850" y="380" fill="#64748b" font-size="12" font-style="italic">jury-of-3 · versioned prompt</text>
+    <text x="850" y="365" fill="#64748b" font-size="12" font-style="italic">sentiment mismatch → capped at 40</text>
+    <text x="850" y="385" fill="#64748b" font-size="12" font-style="italic">score proximity: ±5 perfect · ±15 good</text>
   </g>
 
   <!-- Arrows between cards -->
   <line x1="375" y1="280" x2="445" y2="280" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
   <line x1="755" y1="280" x2="825" y2="280" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
-  <text x="410" y="270" fill="#94a3b8" font-size="11">review</text>
+  <text x="400" y="270" fill="#94a3b8" font-size="11">reviews[]</text>
   <text x="775" y="270" fill="#94a3b8" font-size="11">response</text>
 
   <!-- Curved arrow from Ground Truth to Judge -->
@@ -103,12 +105,12 @@
     <rect x="350" y="560" width="500" height="120" rx="18" fill="#1e293b" stroke="url(#gScore)" stroke-width="2"/>
     <text x="600" y="598" text-anchor="middle" fill="#cbd5e1" font-size="14">Baseline (avg eval_score across 100 rows)</text>
     <text x="600" y="645" text-anchor="middle" fill="url(#gScore)" font-size="42" font-weight="800">81.0%</text>
-    <text x="600" y="668" text-anchor="middle" fill="#64748b" font-size="11">+ sentiment_accuracy · score_MAE · latency · cost</text>
+    <text x="600" y="668" text-anchor="middle" fill="#64748b" font-size="11">+ sentiment_accuracy · score_MAE</text>
   </g>
 
   <!-- Arrow down to baseline -->
   <line x1="600" y1="540" x2="600" y2="555" stroke="#10b981" stroke-width="2" marker-end="url(#arrow)"/>
 
   <!-- Footer -->
-  <text x="600" y="705" text-anchor="middle" fill="#475569" font-size="11">Every change — prompt · model · retrieval — is measured against this number.</text>
+  <text x="600" y="725" text-anchor="middle" fill="#475569" font-size="11">Every change — prompt · model · retrieval — is measured against this number.</text>
 </svg>
